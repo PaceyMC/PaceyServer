@@ -21,8 +21,8 @@ public:
             throw runtime_error("Player name length exceeds the allowed limit");
         }
 
-        cout << "Login Start reçu pour le joueur : " << player_name << endl;
-        cout << "Login Start reçu pour la UUID : " << uuid << endl;
+        cout << "Login Start recieved for the player name : " << player_name << endl;
+        cout << "Login Start recieved for the player uuid : " << uuid << endl;
     }
 };
 
