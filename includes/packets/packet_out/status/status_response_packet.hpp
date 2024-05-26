@@ -3,7 +3,7 @@
 #define PACEY_STATUS_RESPONSE_PACKET_HPP
 
 
-#include "../packet.hpp"
+#include "packet.hpp"
 
 class StatusResponsePacket : public Packet {
 public:

@@ -2,7 +2,7 @@
 #define PACEY_LOGIN_SUCCESS_PACKET_HPP
 
 
-#include "../packet.hpp"
+#include "packet.hpp"
 
 class LoginSuccessPacket : public Packet {
 public:

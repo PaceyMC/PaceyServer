@@ -19,22 +19,24 @@
 #include <stdexcept>
 #include <thread>
 #include <cstring>
-#include <random>
 
 #include "../includes/packet.hpp"
 #include "../includes/connection_state.hpp"
 
-#include "../includes/packets/login_start_packet.hpp"
-#include "../includes/packets/login_success_packet.hpp"
-#include "../includes/packets/ping_packet.hpp"
-#include "../includes/packets/pong_packet.hpp"
-#include "../includes/packets/status_response_packet.hpp"
-#include "../includes/packets/plugin_message_packet.hpp"
-#include "client_infos_packet.hpp"
+#include "packets/packet_in/login/login_start_packet.hpp"
+#include "packets/packet_out/login/login_success_packet.hpp"
+#include "packets/packet_out/status/ping_packet.hpp"
+#include "packets/packet_out/status/status_response_packet.hpp"
+#include "packets/packet_in/config/plugin_message_packet.hpp"
+#include "packets/packet_in/config/client_infos_packet.hpp"
 #include "keep_alive_packet.hpp"
-#include "finish_config.hpp"
+#include "packets/packet_out/config/finish_config.hpp"
 #include "spawn_entity_packet.hpp"
-#include "bundke.hpp"
+#include "packet_out/play/EntityAnimPacket.hpp"
+#include "utils/functions.hpp"
+#include "packet_out/status/pong_packet.hpp"
+
+Logger logger = Packet::getLogger();
 
 bool sendPacket(SOCKET socket, const std::vector<uint8_t>& packet) {
     const int total_bytes = static_cast<int>(packet.size());
@@ -43,7 +45,7 @@ bool sendPacket(SOCKET socket, const std::vector<uint8_t>& packet) {
     while (bytes_sent < total_bytes) {
         int result = send(socket, reinterpret_cast<const char*>(&packet[bytes_sent]), total_bytes - bytes_sent, 0);
         if (result == SOCKET_ERROR) {
-            std::cerr << "Erreur lors de l'envoi du paquet : " << WSAGetLastError() << std::endl;
+            logger.error("Erreur lors de l'envoi du paquet : ", WSAGetLastError());
             return false;
         }
         bytes_sent += result;
@@ -59,12 +61,12 @@ public:
         WSADATA wsaData;
         int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
         if (iResult != NO_ERROR) {
-            throw std::runtime_error("WSAStartup failed: " + std::to_string(iResult));
+            throw runtime_error("WSAStartup failed: " + std::to_string(iResult));
         }
 #endif
         server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (server_socket == INVALID_SOCKET) {
-            throw std::runtime_error("Failed to create socket");
+            throw runtime_error("Failed to create socket");
         }
     }
 
@@ -103,7 +105,7 @@ public:
     }
 
     void handle() {
-        std::vector<uint8_t> received_data;
+        vector<uint8_t> received_data;
         size_t buffer_position = 0;
 
         while (running) {
@@ -111,6 +113,7 @@ public:
             int bytes_received = recv(client_socket, buffer, 1024, 0);
             if (bytes_received <= 0) {
                 running = false;
+                logger.log("FIN !!");
                 break;
             }
 
@@ -129,7 +132,7 @@ public:
                     }
                 }
             } catch (const std::runtime_error& e) {
-                std::cerr << "Error: " << e.what() << std::endl;
+                logger.error("Error: ", e.what());
             }
         }
     }
@@ -137,23 +140,26 @@ public:
 private:
     void keepAliveHandler() {
         while (running) {
-            std::this_thread::sleep_for(std::chrono::seconds(10));
+            std::this_thread::sleep_for(std::chrono::seconds(5));
             if (connection_state == CONFIGURATION) {
                 int64_t payload = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::system_clock::now().time_since_epoch()
                 ).count();
                 KeepAlivePacket keepAlivePacket(payload);
                 sendPacket(client_socket, keepAlivePacket.serialize());
-                std::cout << "Keep Alive sent" << std::endl;
+                logger.log("Keep Alive send");
             }
         }
     }
 
     void handlePacket(int32_t packet_id, const std::vector<uint8_t>& data, size_t& pos) {
-        cout << packet_id << endl;
+        logger.warn(packet_id);
         switch (connection_state) {
             case HANDSHAKE:
                 handleHandshake(packet_id, data, pos);
+                break;
+            case STATUS:
+                handleStatus(packet_id, data, pos);
                 break;
             case LOGIN:
                 handleLogin(packet_id, data, pos);
@@ -163,9 +169,6 @@ private:
                 break;
             case PLAY:
                 handlePlay(packet_id, data, pos);
-                break;
-            case STATUS:
-                handleStatus(packet_id, data, pos);
                 break;
         }
     }
@@ -177,11 +180,11 @@ private:
             uint16_t server_port = Packet::readShort(data, pos);
             int32_t next_state = Packet::readVarInt(data, pos);
 
-            std::cout << "Received Handshake: " << std::endl;
-            std::cout << "  Protocol Version: " << protocol_version << std::endl;
-            std::cout << "  Server Address: " << server_address << std::endl;
-            std::cout << "  Server Port: " << server_port << std::endl;
-            std::cout << "  Next State: " << next_state << std::endl;
+            logger.log("Received Handshake:");
+            logger.log("  Protocol Version: ", protocol_version);
+            logger.log("  Server Address: ", server_address);
+            logger.log("  Server Port: ", server_port);
+            logger.log("  Next State: ", next_state);
 
             if (next_state == 1) {
                 StatusResponsePacket status_response_packet;
@@ -204,6 +207,7 @@ private:
             sendPacket(client_socket, loginSuccessPacket.serialize());
         }
         if (packet_id == 0x03) {
+            logger.log("CONFIG !!");
             connection_state = CONFIGURATION;
         }
     }
@@ -212,15 +216,14 @@ private:
         if (packet_id == 0x00) {
             ClientInfosPacket clientInfosPacket;
             clientInfosPacket.deserialize(data, buffer_position);
-            cout << "Locale : " << clientInfosPacket.locale << endl;
-            cout << "View Distance : " << (int)clientInfosPacket.view_distance << endl;
-            cout << "Chat Mode : " << clientInfosPacket.chat_mode << endl;
-            cout << "Chat Colors : " << clientInfosPacket.chat_colors << endl;
-            cout << "Displayed Skin Parts : " << (int)clientInfosPacket.displayed_skin_part << endl;
-            cout << "Main Hand : " << clientInfosPacket.main_hand << endl;
-            cout << "Enable Text Filtering : " << clientInfosPacket.enable_text_filtering << endl;
-            cout << "Allow Server Listing : " << clientInfosPacket.allow_server_listing << endl;
-
+            logger.log("Locale : ", clientInfosPacket.locale);
+            logger.log("View Distance : ", static_cast<int>(clientInfosPacket.view_distance));
+            logger.log("Chat Mode : ", clientInfosPacket.chat_mode);
+            logger.log("Chat Colors : ", clientInfosPacket.chat_colors);
+            logger.log("Displayed Skin Parts : ", static_cast<int>(clientInfosPacket.displayed_skin_part));
+            logger.log("Main Hand : ", clientInfosPacket.main_hand);
+            logger.log("Enable Text Filtering : ", clientInfosPacket.enable_text_filtering);
+            logger.log("Allow Server Listing : ", clientInfosPacket.allow_server_listing);
             FinishConfigPacket finishConfigPacket;
             sendPacket(client_socket, finishConfigPacket.serialize());
         }
@@ -228,40 +231,25 @@ private:
             PluginMessagePacket pluginMessagePacket;
             pluginMessagePacket.deserialize(data, buffer_position);
             if (pluginMessagePacket.channel == "minecraft:brand") {
-                std::cout << "Client brand: " << pluginMessagePacket.plugin_message << std::endl;
+                logger.log("Client brand : ", pluginMessagePacket.plugin_message);
+
             } else {
-                std::cout << "Plugin Message : " << pluginMessagePacket.plugin_message << std::endl;
+                logger.log("Plugin Message : ", pluginMessagePacket.plugin_message);
             }
         }
         else if (packet_id == 0x02) {
-            cout << "MA BITE DE JUIF !!!!!!!!!!!" << endl;
-            cout << (connection_state) << endl;
-
+            logger.log("REÇU DE CONFIG FINISH");
             connection_state = PLAY;
-            cout << (connection_state) << endl;
+        }
+        else if (packet_id == 0x03) {
+            cout << "PACKET : 0x03" << endl;
         }
     }
 
     void handlePlay(int32_t packet_id, const std::vector<uint8_t>& data, size_t& pos) {
-        cout << "MA BITE !!!!!!!!!!!" << endl;
-        BundlePacket bundlePacket;
-        sendPacket(client_socket, bundlePacket.serialize());
-        SpawnEntityPacket packet;
-        packet.entity_id = 123;
-        packet.entity_uuid = "550e8400-e29b-41d4-a716-446655440000";
-        packet.entity_type = 122; // Example entity type
-        packet.x = 100.5;
-        packet.y = 64.0;
-        packet.z = 200.5;
-        packet.pitch = 0.0f;
-        packet.yaw = 90.0f;
-        packet.head_yaw = 90.0f;
-        packet.data = 0;
-        packet.velocity_x = 0;
-        packet.velocity_y = 0;
-        packet.velocity_z = 0;
-        sendPacket(client_socket, packet.serialize());
-        sendPacket(client_socket, bundlePacket.serialize());
+        logger.log("PLAY !!!");
+        EntityAnimPacket entityAnimPacket;
+        sendPacket(client_socket, entityAnimPacket.serialize());
     }
 
     void handleStatus(int32_t packet_id, const std::vector<uint8_t>& data, size_t& pos) {
@@ -275,7 +263,7 @@ private:
             auto current_time = std::chrono::system_clock::now();
             auto ping_time = std::chrono::milliseconds(ping_payload);
             auto ping_duration = std::chrono::duration_cast<std::chrono::milliseconds>(current_time.time_since_epoch()) - ping_time;
-            std::cout << "Ping: " << ping_duration.count() << " ms" << std::endl;
+            logger.log("Ping: ", ping_duration.count(), " ms");
         }
     }
 
@@ -289,31 +277,31 @@ int main() {
     try {
         Socket server_socket;
 
-        sockaddr_in server_address;
+        sockaddr_in server_address{};
         server_address.sin_family = AF_INET;
         server_address.sin_addr.s_addr = INADDR_ANY;
         server_address.sin_port = htons(25565);
 
         if (bind(server_socket.get(), (sockaddr*)&server_address, sizeof(server_address)) == SOCKET_ERROR) {
-            throw std::runtime_error("Bind failed");
+            throw runtime_error("Bind failed");
         }
 
         if (listen(server_socket.get(), SOMAXCONN) == SOCKET_ERROR) {
-            throw std::runtime_error("Listen failed");
+            throw runtime_error("Listen failed");
         }
 
-        std::cout << "Server listening on port 25565" << std::endl;
+        logger.log("Server listening on port 25565");
 
         while (true) {
-            sockaddr_in client_address;
+            sockaddr_in client_address{};
             int client_address_size = sizeof(client_address);
             SOCKET client_socket = accept(server_socket.get(), (sockaddr*)&client_address, &client_address_size);
             if (client_socket == INVALID_SOCKET) {
-                std::cerr << "Client accept failed" << std::endl;
+                logger.error("Client accept failed");
                 continue;
             }
 
-            std::cout << "New connection accepted" << std::endl;
+            logger.log("New connection accepted : ", inet_ntoa(client_address.sin_addr));
 
             std::thread([](SOCKET socket) {
                 ClientHandler handler(socket);
@@ -321,7 +309,7 @@ int main() {
             }, client_socket).detach();
         }
     } catch (const std::runtime_error& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        logger.error("Error : ", e.what());
         return 1;
     }
 

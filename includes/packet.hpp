@@ -12,6 +12,7 @@
 #include <sstream>
 #include <iomanip>
 #include <random>
+#include "./utils/logger.hpp"
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -268,6 +269,10 @@ public:
             throw std::runtime_error("Index out of bounds while reading boolean");
         }
         return data[index++] != 0;
+    }
+
+    static Logger getLogger() {
+        return Logger("Pacey");
     }
 };
 

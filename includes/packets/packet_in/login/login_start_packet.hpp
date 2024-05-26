@@ -1,7 +1,7 @@
 #ifndef PACEY_LOGIN_START_PACKET_HPP
 #define PACEY_LOGIN_START_PACKET_HPP
 
-#include "../packet.hpp"
+#include "packet.hpp"
 
 class LoginStartPacket : public Packet {
 public:

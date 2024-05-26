@@ -1,17 +1,13 @@
-//
-// Created by alpha on 20/05/2024.
-//
+#ifndef PACEY_PONG_PACKET_HPP
+#define PACEY_PONG_PACKET_HPP
 
-#ifndef PACEY_PING_PACKET_HPP
-#define PACEY_PING_PACKET_HPP
-#include "../packet.hpp"
+#include "packet.hpp"
 
-
-class PingPacket : public Packet {
+class PongPacket : public Packet {
 public:
     int64_t payload;
 
-    PingPacket(int64_t payload) : payload(payload) {}
+    PongPacket(int64_t payload) : payload(payload) {}
 
     vector<uint8_t> serialize() const override {
         vector<uint8_t> buffer;
@@ -26,8 +22,12 @@ public:
     }
 
     void deserialize(const vector<uint8_t>& buffer, size_t& position) override {
+        if (position + sizeof(payload) > buffer.size()) {
+            throw runtime_error("Fin du buffer atteinte avant la fin du pong");
+        }
+        memcpy(&payload, &buffer[position], sizeof(payload));
+        position += sizeof(payload);
     }
 };
 
-
-#endif //PACEY_PING_PACKET_HPP
+#endif

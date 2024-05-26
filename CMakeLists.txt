@@ -8,24 +8,26 @@ include_directories(includes/packets)
 
 add_executable(Pacey
 
-        includes/packets/handshake_packet.hpp
-        includes/packets/login_start_packet.hpp
-        includes/packets/login_success_packet.hpp
-        includes/packets/ping_packet.hpp
-        includes/packets/pong_packet.hpp
-        includes/packets/status_response_packet.hpp
+        includes/packets/packet_in/handshake/handshake_packet.hpp
+        includes/packets/packet_in/login/login_start_packet.hpp
+        includes/packets/packet_out/login/login_success_packet.hpp
+        includes/packets/packet_out/status/ping_packet.hpp
+        includes/packets/packet_out/status/pong_packet.hpp
+        includes/packets/packet_out/status/status_response_packet.hpp
 
         includes/packet.hpp
 
         sources/main.cpp
         includes/connection_state.hpp
         includes/packets/keep_alive_packet.hpp
-        includes/packets/plugin_message_packet.hpp
+        includes/packets/packet_in/config/plugin_message_packet.hpp
         includes/packets/query_block_entity_tag_packet.hpp
         includes/packets/spawn_entity_packet.hpp
-        includes/packets/client_infos_packet.hpp
-        includes/packets/finish_config.hpp
-        includes/packets/bundke.hpp
+        includes/packets/packet_in/config/client_infos_packet.hpp
+        includes/packets/packet_out/config/finish_config.hpp
+        includes/packets/packet_out/play/EntityAnimPacket.hpp
+        includes/utils/functions.hpp
+        includes/utils/logger.hpp
 )
 
 target_link_libraries(Pacey ws2_32)

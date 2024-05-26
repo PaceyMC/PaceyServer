@@ -1,7 +1,7 @@
 #ifndef PACEY_HANDSHAKE_PACKET_HPP
 #define PACEY_HANDSHAKE_PACKET_HPP
 
-#include "../packet.hpp"
+#include "packet.hpp"
 
 class HandshakePacket : public Packet {
 public:
